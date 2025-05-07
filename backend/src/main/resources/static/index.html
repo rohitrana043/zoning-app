@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real Estate Zoning Update API</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+    />
+    <style>
+      .endpoint {
+        border-left: 4px solid #3b82f6;
+        background-color: #f8fafc;
+      }
+      .gradient-bg {
+        background: linear-gradient(90deg, #4338ca, #3b82f6);
+      }
+    </style>
+  </head>
+  <body class="bg-gray-50 text-gray-800">
+    <header class="gradient-bg text-white py-16 px-4 shadow-lg">
+      <div class="container mx-auto max-w-5xl">
+        <h1 class="text-4xl font-bold mb-4">Real Estate Zoning Update API</h1>
+        <p class="text-xl mb-6">
+          Backend service for managing and updating real estate zoning
+          information
+        </p>
+        <div class="flex flex-wrap gap-4">
+          <a
+            href="https://zoning-app.rohitrana.dev/"
+            class="bg-white text-blue-700 hover:bg-blue-50 px-5 py-2 rounded-lg font-medium transition duration-200 shadow-md"
+            >View Frontend App</a
+          >
+          <a
+            href="https://github.com/rohitrana043/zoning-app"
+            class="bg-transparent hover:bg-blue-700 border border-white text-white px-5 py-2 rounded-lg font-medium transition duration-200"
+            >GitHub Repository</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <main class="container mx-auto max-w-5xl py-12 px-4">
+      <section class="mb-12">
+        <h2 class="text-3xl font-bold mb-4">API Documentation</h2>
+        <p class="text-lg mb-8">
+          This service provides REST API endpoints for retrieving and updating
+          real estate zoning information for parcels. The API is designed to
+          support efficient data loading for map-based applications.
+        </p>
+
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h3 class="text-xl font-bold mb-4">Base URL</h3>
+          <div class="bg-gray-100 p-3 rounded-md font-mono text-sm">
+            https://zoning-app-production.up.railway.app/api
+          </div>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h3 class="text-xl font-bold mb-6">Available Endpoints</h3>
+
+          <div class="endpoint p-4 mb-6 rounded">
+            <h4 class="font-bold text-lg">GET /parcels/geojson/bounds</h4>
+            <p class="text-gray-600 mb-3">
+              Retrieve parcels within geographic bounds in GeoJSON format
+            </p>
+            <h5 class="font-semibold text-sm text-gray-700 mb-2">
+              Parameters:
+            </h5>
+            <ul class="pl-5 mb-3 list-disc">
+              <li><code>north</code> - Northern latitude bound</li>
+              <li><code>south</code> - Southern latitude bound</li>
+              <li><code>east</code> - Eastern longitude bound</li>
+              <li><code>west</code> - Western longitude bound</li>
+            </ul>
+            <h5 class="font-semibold text-sm text-gray-700 mb-2">Example:</h5>
+            <div class="bg-gray-100 p-2 rounded-md font-mono text-xs break-all">
+              /api/parcels/geojson/bounds?north=32.97283888431184&south=32.966358122355544&east=-96.77509260177614&west=-96.7867569923401
+            </div>
+          </div>
+
+          <div class="endpoint p-4 mb-6 rounded">
+            <h4 class="font-bold text-lg">GET /parcels/clusters</h4>
+            <p class="text-gray-600 mb-3">
+              Get clusters of parcels within bounds for efficient map rendering
+            </p>
+            <h5 class="font-semibold text-sm text-gray-700 mb-2">
+              Parameters:
+            </h5>
+            <ul class="pl-5 mb-3 list-disc">
+              <li><code>north</code> - Northern latitude bound</li>
+              <li><code>south</code> - Southern latitude bound</li>
+              <li><code>east</code> - Eastern longitude bound</li>
+              <li><code>west</code> - Western longitude bound</li>
+              <li><code>zoom</code> - Current map zoom level</li>
+            </ul>
+            <h5 class="font-semibold text-sm text-gray-700 mb-2">Example:</h5>
+            <div class="bg-gray-100 p-2 rounded-md font-mono text-xs break-all">
+              /api/parcels/clusters?north=32.973676002537765&south=32.9607141259844&east=-96.7695393562317&west=-96.79286813735963&zoom=16
+            </div>
+          </div>
+
+          <div class="endpoint p-4 mb-6 rounded">
+            <h4 class="font-bold text-lg">POST /parcels/update-zoning</h4>
+            <p class="text-gray-600 mb-3">
+              Update zoning information for selected parcels
+            </p>
+            <h5 class="font-semibold text-sm text-gray-700 mb-2">
+              Request Body (JSON):
+            </h5>
+            <div class="bg-gray-100 p-2 rounded-md font-mono text-xs mb-3">
+              {<br />
+              &nbsp;&nbsp;"parcelIds": [1, 2, 3],<br />
+              &nbsp;&nbsp;"zoningType": "Residential",<br />
+              &nbsp;&nbsp;"zoningSubType": "Single Family",<br />
+              &nbsp;&nbsp;"username": "user"<br />
+              }
+            </div>
+          </div>
+
+          <div class="endpoint p-4 mb-6 rounded">
+            <h4 class="font-bold text-lg">GET /parcels/statistics</h4>
+            <p class="text-gray-600 mb-3">Get statistics about zoning types</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="mb-12">
+        <h2 class="text-3xl font-bold mb-4">Getting Started</h2>
+        <p class="mb-4">To start using this API, you can:</p>
+        <ol class="list-decimal pl-6 mb-6 space-y-2">
+          <li>
+            Visit the
+            <a
+              href="https://zoning-app.rohitrana.dev/"
+              class="text-blue-600 hover:underline"
+              >frontend application</a
+            >
+            to see the API in action
+          </li>
+          <li>
+            Explore the
+            <a
+              href="https://github.com/rohitrana043/zoning-app"
+              class="text-blue-600 hover:underline"
+              >GitHub repository</a
+            >
+            for the source code
+          </li>
+          <li>
+            Test API endpoints using your preferred API client (Postman, cURL,
+            etc.)
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="bg-gray-800 text-white py-8 px-4">
+      <div class="container mx-auto max-w-5xl">
+        <div class="flex flex-col md:flex-row justify-between">
+          <div class="mb-6 md:mb-0">
+            <h3 class="text-xl font-bold mb-2">
+              Real Estate Zoning Update API
+            </h3>
+            <p>A backend service for managing real estate zoning information</p>
+          </div>
+          <div>
+            <h4 class="font-bold mb-2">Links</h4>
+            <ul class="space-y-1">
+              <li>
+                <a
+                  href="https://zoning-app.rohitrana.dev/"
+                  class="text-blue-300 hover:text-white"
+                  >Frontend App</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/rohitrana043/zoning-app"
+                  class="text-blue-300 hover:text-white"
+                  >GitHub Repository</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://www.rohitrana.dev/"
+                  class="text-blue-300 hover:text-white"
+                  >Portfolio Website</a
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div
+          class="mt-8 pt-6 border-t border-gray-700 text-center text-gray-400"
+        >
+          <p>© 2025 Rohit Rana. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
