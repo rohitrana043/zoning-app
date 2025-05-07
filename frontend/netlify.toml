@@ -1,9 +1,6 @@
 [build]
   command = "CI=false npm run build"
   publish = "build"
-  
-[build.environment]
-  REACT_APP_MOCK_DATA = "true"
 
 [[redirects]]
   from = "/*"
