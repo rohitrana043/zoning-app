@@ -11,7 +11,8 @@ import {
   getMockAuditLogs,
 } from '../utils/mockDataHandler';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080/api';
 const USE_MOCK_DATA = process.env.REACT_APP_MOCK_DATA === 'true';
 
 // Initialize mock data if using mock mode
