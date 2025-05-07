@@ -15,10 +15,37 @@ const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080/api';
 const USE_MOCK_DATA = process.env.REACT_APP_MOCK_DATA === 'true';
 
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second between retries
+
 // Initialize mock data if using mock mode
 if (USE_MOCK_DATA) {
   initMockData();
 }
+
+const fetchWithRetry = async (
+  apiCall,
+  retriesLeft = MAX_RETRIES,
+  delay = RETRY_DELAY
+) => {
+  try {
+    return await apiCall();
+  } catch (error) {
+    if (retriesLeft <= 0) {
+      console.error(`Max retries exceeded. Giving up.`);
+      throw error;
+    }
+
+    console.log(
+      `Request failed. Retrying in ${delay}ms... (${retriesLeft} retries left)`
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    // Increase delay for next retry (exponential backoff)
+    return fetchWithRetry(apiCall, retriesLeft - 1, delay * 1.5);
+  }
+};
 
 // Configure axios with defaults
 const api = axios.create({
@@ -85,9 +112,11 @@ const apiService = {
     }
 
     try {
-      const response = await api.get('/parcels/geojson/bounds', {
-        params: { north, south, east, west },
-      });
+      const response = await fetchWithRetry(() =>
+        api.get('/parcels/geojson/bounds', {
+          params: { north, south, east, west },
+        })
+      );
       return response.data;
     } catch (error) {
       console.error('Error fetching parcels by bounds:', error);
@@ -115,9 +144,11 @@ const apiService = {
 
     try {
       // Call the backend endpoint for clusters
-      const response = await api.get('/parcels/clusters', {
-        params: { north, south, east, west, zoom },
-      });
+      const response = await fetchWithRetry(() =>
+        api.get('/parcels/clusters', {
+          params: { north, south, east, west, zoom },
+        })
+      );
 
       // Validate the response structure
       if (Array.isArray(response.data)) {
@@ -203,12 +234,14 @@ const apiService = {
     }
 
     try {
-      const response = await api.post('/parcels/update-zoning', {
-        parcelIds,
-        zoningType,
-        zoningSubType,
-        username,
-      });
+      const response = await fetchWithRetry(() =>
+        api.post('/parcels/update-zoning', {
+          parcelIds,
+          zoningType,
+          zoningSubType,
+          username,
+        })
+      );
       return response.data;
     } catch (error) {
       console.error('Error updating zoning:', error);
@@ -227,7 +260,9 @@ const apiService = {
     }
 
     try {
-      const response = await api.get('/parcels/statistics');
+      const response = await fetchWithRetry(() =>
+        api.get('/parcels/statistics')
+      );
       return response.data;
     } catch (error) {
       console.error('Error fetching zoning statistics:', error);
@@ -247,7 +282,7 @@ const apiService = {
 
     // Your existing API call for non-mock mode
     try {
-      const response = await api.get('/audit/logs');
+      const response = await fetchWithRetry(() => api.get('/audit/logs'));
       return response.data;
     } catch (error) {
       console.error('Error fetching audit logs:', error);

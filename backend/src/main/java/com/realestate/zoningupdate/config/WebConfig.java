@@ -13,7 +13,7 @@ import java.util.Collections;
 @Configuration
 public class WebConfig {
 
-    @Value("${spring.mvc.cors.allowed-origins:http://localhost:3000}")
+    @Value("${spring.mvc.cors.allowed-origins:*}")
     private String allowedOrigins;
 
     @Bean
@@ -21,26 +21,22 @@ public class WebConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
-        // Set allowed origins from properties (fallback to localhost:3000)
-        Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .forEach(config::addAllowedOrigin);
+        // Enable all origins if wildcard is specified
+        if (allowedOrigins.contains("*")) {
+            config.addAllowedOrigin("*");
+        } else {
+            // Set allowed origins from properties
+            Arrays.stream(allowedOrigins.split(","))
+                    .map(String::trim)
+                    .forEach(config::addAllowedOrigin);
+        }
 
-        // Allow common headers
-        config.addAllowedHeader("Origin");
-        config.addAllowedHeader("Content-Type");
-        config.addAllowedHeader("Accept");
-        config.addAllowedHeader("Authorization");
-
-        // Allow only necessary methods
-        config.addAllowedMethod("GET");
-        config.addAllowedMethod("POST");
-        config.addAllowedMethod("PUT");
-        config.addAllowedMethod("DELETE");
-        config.addAllowedMethod("OPTIONS");
+        // Allow all headers and methods for maximum compatibility
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
 
         // Allow credentials
-        config.setAllowCredentials(true);
+        config.setAllowCredentials(false);  // Change to true only if using cookies
 
         // Set max age for preflight requests
         config.setMaxAge(3600L);
