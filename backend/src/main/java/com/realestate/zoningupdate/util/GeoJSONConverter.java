@@ -34,6 +34,7 @@ public class GeoJSONConverter {
             properties.put("zoning", parcel.getZoning());
             properties.put("zoning_sub", parcel.getZoning_sub());
             properties.put("zoning_typ", parcel.getZoning_typ());
+            properties.put("mailadd", parcel.getMailadd());
 
             feature.put("properties", properties);
             feature.put("geometry", convertPolygonToGeoJSON(parcel.getGeom()));

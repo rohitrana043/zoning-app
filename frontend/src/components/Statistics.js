@@ -1,15 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import apiService from '../services/apiService';
 
 const Statistics = ({ selectedParcels, globalStats, visibleParcelData }) => {
   const [visibleAreaStats, setVisibleAreaStats] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed to false by default
   const [error, setError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [activeTab, setActiveTab] = useState('visible'); // Changed default to 'visible'
-
-  // Maximum number of retries
-  const MAX_RETRIES = 3;
+  const [activeTab, setActiveTab] = useState('visible');
 
   // Calculate visible area statistics from visibleParcelData
   useEffect(() => {
@@ -22,30 +17,13 @@ const Statistics = ({ selectedParcels, globalStats, visibleParcelData }) => {
           const zoningType = feature.properties.zoning_typ || 'Unknown';
           stats[zoningType] = (stats[zoningType] || 0) + 1;
         });
+
         setVisibleAreaStats(stats);
       } catch (error) {
         console.error('Error calculating visible area statistics:', error);
       }
     }
   }, [visibleParcelData]);
-
-  // Fetch global zoning statistics from the API
-  useEffect(() => {
-    const fetchGlobalStatistics = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await apiService.getZoningStatistics();
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching global statistics:', error);
-        setError('Failed to load statistics. Please try again later.');
-        setLoading(false);
-      }
-    };
-
-    fetchGlobalStatistics();
-  }, [retryCount]);
 
   // Calculate statistics for selected parcels
   const calculateSelectedStats = () => {
@@ -75,13 +53,6 @@ const Statistics = ({ selectedParcels, globalStats, visibleParcelData }) => {
   // Get the selected statistics
   const selectedStats = calculateSelectedStats();
 
-  // Retry function
-  const handleRetry = () => {
-    if (retryCount < MAX_RETRIES) {
-      setRetryCount((prev) => prev + 1);
-    }
-  };
-
   // Calculate total parcels for each dataset
   const globalTotal = Object.values(globalStats || {}).reduce(
     (sum, val) => sum + val,
@@ -104,11 +75,6 @@ const Statistics = ({ selectedParcels, globalStats, visibleParcelData }) => {
     return (
       <div className="card flex flex-col items-center justify-center h-48">
         <p className="text-red-600 mb-4">{error}</p>
-        {retryCount < MAX_RETRIES && (
-          <button className="btn btn-primary text-sm" onClick={handleRetry}>
-            Retry ({MAX_RETRIES - retryCount} attempts left)
-          </button>
-        )}
       </div>
     );
   }

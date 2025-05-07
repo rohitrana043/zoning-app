@@ -120,53 +120,17 @@ const ParcelMap = ({
   const [retryCount, setRetryCount] = useState(0);
   const [currentZoom, setCurrentZoom] = useState(DEFAULT_ZOOM);
 
-  // Request cache references
-  const pendingRequestsRef = useRef(new Set());
-  const failedRequestsRef = useRef(new Set());
-  const boundsChangeTimerRef = useRef(null);
-  const lastRequestedBoundsRef = useRef(null);
-
-  // Other refs
   const geoJsonLayerRef = useRef(null);
   const loadedAreasRef = useRef([]);
   const loadedClustersRef = useRef([]);
   const isLoadingAllRef = useRef(false);
   const activePopupRef = useRef(null);
   const lastClusterClickRef = useRef(0);
+  const lastBoundsChangeRef = useRef(null);
+  const loadingOperationRef = useRef(false);
 
   // Maximum number of retries
   const MAX_RETRIES = 3;
-
-  // Request caching functions
-  const isRequestCached = useCallback((bounds) => {
-    const boundsString = `${bounds.getNorth()},${bounds.getSouth()},${bounds.getEast()},${bounds.getWest()}`;
-
-    // Check if this request is pending or has failed recently
-    return (
-      pendingRequestsRef.current.has(boundsString) ||
-      failedRequestsRef.current.has(boundsString)
-    );
-  }, []);
-
-  const markRequestPending = useCallback((bounds) => {
-    const boundsString = `${bounds.getNorth()},${bounds.getSouth()},${bounds.getEast()},${bounds.getWest()}`;
-    pendingRequestsRef.current.add(boundsString);
-    return boundsString;
-  }, []);
-
-  const markRequestCompleted = useCallback((boundsString) => {
-    pendingRequestsRef.current.delete(boundsString);
-  }, []);
-
-  const markRequestFailed = useCallback((boundsString) => {
-    pendingRequestsRef.current.delete(boundsString);
-    failedRequestsRef.current.add(boundsString);
-
-    // Remove from failed requests after 30 seconds to allow retrying later
-    setTimeout(() => {
-      failedRequestsRef.current.delete(boundsString);
-    }, 30000);
-  }, []);
 
   // Clear loaded areas when zoom changes significantly
   useEffect(() => {
@@ -238,8 +202,8 @@ const ParcelMap = ({
   // Component to handle map events and load data dynamically
   const MapEventHandler = ({ onBoundsChange, loadAllData }) => {
     const map = useMap();
-    const initialLoadRef = useRef(false);
-    const moveEndTimerRef = useRef(null);
+    const lastEventTimeRef = useRef(0);
+    const pendingEventRef = useRef(null);
 
     // Handle zoom change
     const handleZoomChange = useCallback(() => {
@@ -247,57 +211,56 @@ const ParcelMap = ({
       setCurrentZoom(zoom);
     }, [map]);
 
-    // Initial load - only happens once
+    // Create a debounced function to handle map events
+    const handleMapEvent = useCallback(() => {
+      const now = Date.now();
+      const bounds = map.getBounds();
+      const zoom = map.getZoom();
+
+      // Clear any pending events
+      if (pendingEventRef.current) {
+        clearTimeout(pendingEventRef.current);
+      }
+
+      // Set a timeout to handle the event
+      pendingEventRef.current = setTimeout(() => {
+        handleZoomChange();
+        onBoundsChange(bounds, zoom);
+        updateVisibleFeatures();
+        lastEventTimeRef.current = now;
+      }, 150); // Add a small delay to prevent double calls
+    }, [map, onBoundsChange, handleZoomChange, updateVisibleFeatures]);
+
     useEffect(() => {
-      // Only run this effect if map exists and hasn't been initialized
-      if (!map || initialLoadRef.current) return;
+      // Only run this effect if map exists
+      if (!map) return;
 
-      // Mark as initialized
-      initialLoadRef.current = true;
-
-      // Get initial map state
+      // Get initial map state once
       const initialBounds = map.getBounds();
       const initialZoom = map.getZoom();
 
-      // Set initial zoom state
+      // Set initial zoom state WITHOUT using setCurrentZoom inside an effect
       if (initialZoom !== currentZoom) {
         setCurrentZoom(initialZoom);
       }
 
-      // Use timeout for initial load to ensure component is fully mounted
-      const timer = setTimeout(() => {
-        onBoundsChange(initialBounds, initialZoom);
-      }, 500);
+      // Initial load - use function reference that doesn't change between renders
+      const handleInitialLoad = () => {
+        if (!loadingOperationRef.current) {
+          onBoundsChange(initialBounds, initialZoom);
+        }
+      };
+
+      // Use timeout to ensure state is updated before making additional calls
+      const timer = setTimeout(handleInitialLoad, 300);
 
       return () => clearTimeout(timer);
     }, [map]); // ONLY depend on map reference
 
-    // Listen for map movement and zoom events with debouncing
+    // Listen for map movement and zoom events to load data dynamically
     useMapEvents({
-      moveend: () => {
-        if (moveEndTimerRef.current) {
-          clearTimeout(moveEndTimerRef.current);
-        }
-
-        moveEndTimerRef.current = setTimeout(() => {
-          const bounds = map.getBounds();
-          onBoundsChange(bounds, map.getZoom());
-          updateVisibleFeatures();
-        }, 300);
-      },
-      zoomend: () => {
-        if (moveEndTimerRef.current) {
-          clearTimeout(moveEndTimerRef.current);
-        }
-
-        moveEndTimerRef.current = setTimeout(() => {
-          const bounds = map.getBounds();
-          const zoom = map.getZoom();
-          handleZoomChange();
-          onBoundsChange(bounds, zoom);
-          updateVisibleFeatures();
-        }, 300);
-      },
+      moveend: handleMapEvent,
+      zoomend: handleMapEvent,
     });
 
     return null;
@@ -341,33 +304,6 @@ const ParcelMap = ({
     (bounds, zoom) => {
       const strategy = getLoadStrategy(zoom);
 
-      // Function to check if bounds areas overlap significantly (>50%)
-      const boundsOverlapSignificantly = (bounds1, bounds2) => {
-        // Calculate area of bounds1
-        const width1 = bounds1[2] - bounds1[0];
-        const height1 = bounds1[3] - bounds1[1];
-        const area1 = width1 * height1;
-
-        // Calculate overlap area
-        const overlapWest = Math.max(bounds1[0], bounds2[0]);
-        const overlapSouth = Math.max(bounds1[1], bounds2[1]);
-        const overlapEast = Math.min(bounds1[2], bounds2[2]);
-        const overlapNorth = Math.min(bounds1[3], bounds2[3]);
-
-        // If there's no overlap, return false
-        if (overlapWest >= overlapEast || overlapSouth >= overlapNorth) {
-          return false;
-        }
-
-        // Calculate overlap area
-        const overlapWidth = overlapEast - overlapWest;
-        const overlapHeight = overlapNorth - overlapSouth;
-        const overlapArea = overlapWidth * overlapHeight;
-
-        // If overlap area is > 50% of bounds1 area, return true
-        return overlapArea > area1 * 0.5;
-      };
-
       // If we're looking at parcels in detail
       if (strategy === 'full_detail' || strategy === 'sparse_parcels') {
         if (loadedAreasRef.current.length === 0) return false;
@@ -380,15 +316,14 @@ const ParcelMap = ({
         ];
 
         // Check if this area is fully contained in any previously loaded area
-        // or has significant overlap
-        return loadedAreasRef.current.some(
-          (area) =>
-            (area[0] <= boundingBox[0] && // west
-              area[1] <= boundingBox[1] && // south
-              area[2] >= boundingBox[2] && // east
-              area[3] >= boundingBox[3]) || // north
-            boundsOverlapSignificantly(area, boundingBox)
-        );
+        return loadedAreasRef.current.some((area) => {
+          return (
+            area[0] <= boundingBox[0] && // west
+            area[1] <= boundingBox[1] && // south
+            area[2] >= boundingBox[2] && // east
+            area[3] >= boundingBox[3] // north
+          );
+        });
       }
       // If we're looking at clusters
       else if (
@@ -405,21 +340,35 @@ const ParcelMap = ({
         ];
 
         // Check if this area is fully contained in any previously loaded cluster area
-        // or has significant overlap
-        return loadedClustersRef.current.some(
-          (area) =>
-            (area[0] <= boundingBox[0] && // west
-              area[1] <= boundingBox[1] && // south
-              area[2] >= boundingBox[2] && // east
-              area[3] >= boundingBox[3]) || // north
-            boundsOverlapSignificantly(area, boundingBox)
-        );
+        return loadedClustersRef.current.some((area) => {
+          return (
+            area[0] <= boundingBox[0] && // west
+            area[1] <= boundingBox[1] && // south
+            area[2] >= boundingBox[2] && // east
+            area[3] >= boundingBox[3] // north
+          );
+        });
       }
 
       return false;
     },
     [getLoadStrategy]
   );
+
+  // Helper function to compare bounds to detect duplicate calls
+  const isSameBoundsRequest = useCallback((bounds1, bounds2, zoom1, zoom2) => {
+    if (!bounds1 || !bounds2 || zoom1 !== zoom2) return false;
+
+    // Allow small difference in bounds (0.0001 degrees is approximately 10 meters)
+    const tolerance = 0.0001;
+
+    return (
+      Math.abs(bounds1.getNorth() - bounds2.getNorth()) < tolerance &&
+      Math.abs(bounds1.getSouth() - bounds2.getSouth()) < tolerance &&
+      Math.abs(bounds1.getEast() - bounds2.getEast()) < tolerance &&
+      Math.abs(bounds1.getWest() - bounds2.getWest()) < tolerance
+    );
+  }, []);
 
   // Initial setup - prepare for loading
   useEffect(() => {
@@ -428,130 +377,90 @@ const ParcelMap = ({
 
   // Handle map bounds change - this is the core of dynamic loading!
   const handleBoundsChange = useCallback(
-    (bounds, zoom) => {
-      // Clear any pending timer
-      if (boundsChangeTimerRef.current) {
-        clearTimeout(boundsChangeTimerRef.current);
+    async (bounds, zoom) => {
+      // Skip if loading all data or if already loading
+      if (isLoadingAllRef.current || loadingOperationRef.current) return;
+
+      // Check if this is a duplicate request to the last one
+      if (
+        lastBoundsChangeRef.current &&
+        isSameBoundsRequest(
+          lastBoundsChangeRef.current.bounds,
+          bounds,
+          lastBoundsChangeRef.current.zoom,
+          zoom
+        )
+      ) {
+        return;
       }
 
-      // Debounce map movement events
-      boundsChangeTimerRef.current = setTimeout(async () => {
-        // Skip if loading all data
-        if (isLoadingAllRef.current) return;
+      const loadStrategy = getLoadStrategy(zoom);
+      // Skip if this area has already been loaded for current strategy
+      if (isBoundsLoaded(bounds, zoom)) {
+        return;
+      }
 
-        const loadStrategy = getLoadStrategy(zoom);
+      try {
+        // Set loading state and save current bounds request
+        setLoadingBounds(true);
+        loadingOperationRef.current = true;
+        lastBoundsChangeRef.current = { bounds, zoom };
 
-        // Create bounds string for comparison
-        const boundsString = `${bounds.getNorth()},${bounds.getSouth()},${bounds.getEast()},${bounds.getWest()}`;
+        const north = bounds.getNorth();
+        const south = bounds.getSouth();
+        const east = bounds.getEast();
+        const west = bounds.getWest();
+        // Add padding to avoid too frequent requests near edges (10% padding)
+        const paddedBounds = [
+          west - (east - west) * 0.1, // padded west
+          south - (north - south) * 0.1, // padded south
+          east + (east - west) * 0.1, // padded east
+          north + (north - south) * 0.1, // padded north
+        ];
 
-        // Skip if this is the exact same bounds as last request
-        if (lastRequestedBoundsRef.current === boundsString) {
-          console.log('Skipping duplicate bounds request');
-          return;
+        if (
+          loadStrategy === 'clusters_only' ||
+          loadStrategy === 'clusters_and_some_parcels'
+        ) {
+          // Fetch cluster data
+          const clusters = await apiService.getParcelClusters(
+            paddedBounds[3], // north
+            paddedBounds[1], // south
+            paddedBounds[2], // east
+            paddedBounds[0], // west
+            zoom
+          );
+          // Add this area to loaded clusters to avoid reloading
+          loadedClustersRef.current.push(paddedBounds);
+
+          // Update cluster state
+          setClusterData((prevClusters) => [...clusters]);
+        } else {
+          // Get parcels from API based on current bounds with full detail
+          const data = await apiService.getParcelsByBounds(
+            paddedBounds[3], // north
+            paddedBounds[1], // south
+            paddedBounds[2], // east
+            paddedBounds[0] // west
+          );
+          // Add this area to loaded areas to avoid reloading it
+          loadedAreasRef.current.push(paddedBounds);
+
+          // Merge with existing data
+          setGeoJsonData((prevData) => mergeGeoJsonData(prevData, data));
         }
-
-        // Skip if this request is cached (pending or recently failed)
-        if (isRequestCached(bounds)) {
-          console.log('Skipping cached request');
-          return;
-        }
-
-        // Skip if this area has already been loaded for current strategy
-        if (isBoundsLoaded(bounds, zoom)) {
-          console.log('Area already loaded for current zoom level');
-          return;
-        }
-
-        // Store current bounds as last requested
-        lastRequestedBoundsRef.current = boundsString;
-
-        // Mark this request as pending
-        const requestId = markRequestPending(bounds);
-
-        try {
-          setLoadingBounds(true);
-
-          const north = bounds.getNorth();
-          const south = bounds.getSouth();
-          const east = bounds.getEast();
-          const west = bounds.getWest();
-
-          // Add padding to avoid too frequent requests near edges (10% padding)
-          const paddedBounds = [
-            west - (east - west) * 0.1, // padded west
-            south - (north - south) * 0.1, // padded south
-            east + (east - west) * 0.1, // padded east
-            north + (north - south) * 0.1, // padded north
-          ];
-
-          if (
-            loadStrategy === 'clusters_only' ||
-            loadStrategy === 'clusters_and_some_parcels'
-          ) {
-            try {
-              // Fetch cluster data
-              const clusters = await apiService.getParcelClusters(
-                paddedBounds[3], // north
-                paddedBounds[1], // south
-                paddedBounds[2], // east
-                paddedBounds[0], // west
-                zoom
-              );
-
-              // Mark request as completed
-              markRequestCompleted(requestId);
-
-              // Add this area to loaded clusters to avoid reloading
-              loadedClustersRef.current.push(paddedBounds);
-
-              // Update cluster state
-              setClusterData((prevClusters) => [...clusters]);
-            } catch (error) {
-              console.error('Error loading clusters:', error);
-              markRequestFailed(requestId);
-            }
-          } else {
-            try {
-              // Get parcels from API based on current bounds with full detail
-              const data = await apiService.getParcelsByBounds(
-                paddedBounds[3], // north
-                paddedBounds[1], // south
-                paddedBounds[2], // east
-                paddedBounds[0] // west
-              );
-
-              // Mark request as completed
-              markRequestCompleted(requestId);
-
-              if (data && data.features) {
-                // Add this area to loaded areas to avoid reloading it
-                loadedAreasRef.current.push(paddedBounds);
-
-                // Merge with existing data
-                setGeoJsonData((prevData) => mergeGeoJsonData(prevData, data));
-              }
-            } catch (error) {
-              console.error('Error loading parcel data:', error);
-              markRequestFailed(requestId);
-            }
-          }
-        } catch (error) {
-          console.error('Error loading data by bounds:', error);
-          markRequestFailed(requestId);
-        } finally {
-          setLoadingBounds(false);
-        }
-      }, 300); // 300ms debounce
+      } catch (error) {
+        console.error('Error loading data by bounds:', error);
+        // Non-blocking error - don't set global error state to keep map usable
+      } finally {
+        setLoadingBounds(false);
+        // Add a small delay before allowing the next operation
+        setTimeout(() => {
+          loadingOperationRef.current = false;
+        }, 100);
+      }
     },
-    [
-      getLoadStrategy,
-      isBoundsLoaded,
-      mergeGeoJsonData,
-      isRequestCached,
-      markRequestPending,
-      markRequestCompleted,
-      markRequestFailed,
-    ]
+    [isBoundsLoaded, mergeGeoJsonData, getLoadStrategy, isSameBoundsRequest]
   );
 
   // Update the GeoJSON layer style when selected parcels change
@@ -594,7 +503,6 @@ const ParcelMap = ({
         // Prevent too frequent clicks
         if (Date.now() - lastClusterClickRef.current < 500) return;
         lastClusterClickRef.current = Date.now();
-
         // Calculate appropriate zoom level based on cluster size
         let zoomIncrement;
         const count = cluster.count || 0;
@@ -615,7 +523,6 @@ const ParcelMap = ({
           currentZoom + zoomIncrement,
           FULL_DETAIL_ZOOM - 1
         );
-
         // If cluster has bounds, use them
         if (
           cluster.bounds &&
@@ -626,7 +533,6 @@ const ParcelMap = ({
           const sw = L.latLng(cluster.bounds[1], cluster.bounds[0]);
           const ne = L.latLng(cluster.bounds[3], cluster.bounds[2]);
           const bounds = L.latLngBounds(sw, ne);
-
           // Use fitBounds with max zoom restriction
           map.fitBounds(bounds.pad(0.2), {
             animate: true,
@@ -647,7 +553,7 @@ const ParcelMap = ({
         if (map) map.setZoom(Math.min(currentZoom + 1, FULL_DETAIL_ZOOM - 1));
       }
     },
-    [currentZoom]
+    [currentZoom, FULL_DETAIL_ZOOM]
   );
 
   // This is the critical function that handles both selection and popups
@@ -822,12 +728,6 @@ const ParcelMap = ({
 `,
         }}
       />
-
-      {process.env.REACT_APP_MOCK_DATA === 'true' && (
-        <div className="absolute top-3 left-3 z-[1000] bg-orange-500 bg-opacity-80 text-white px-3 py-1 rounded text-sm font-medium">
-          Using Mock Data
-        </div>
-      )}
 
       {loadingBounds && (
         <div className="absolute top-3 left-1/2 transform -translate-x-1/2 z-[1000] bg-blue-500 bg-opacity-80 text-white px-4 py-2 rounded text-sm font-medium shadow-md animate-pulse">
